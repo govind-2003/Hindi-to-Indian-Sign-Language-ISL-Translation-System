@@ -97,7 +97,7 @@ if st.button("🎤 Speak"):
  # Rerun to update text input with spoken text
 
 # Use hindi_sentence in your logic below this line
-st.markdown(f"**You entered/spoke:** {hindi_sentence}")
+st.markdown(f"🗣️ **Hindi Sentence Provided:** {hindi_sentence}")
 
 
 # Step 2: Proceed only if input is provided
@@ -106,14 +106,15 @@ if hindi_sentence.strip():
     document = analyze_hindi_sentence(hindi_sentence)
     df_tokens, root_word = extract_token_info(document)
 
-    # Display tokens and root word
-    st.dataframe(df_tokens)
-    st.markdown(f"**Root (highest ranked) word:** {root_word}")
+    # Collapsible section for text analysis and dependency parse
+    with st.expander("📊 Show Text Content & Dependency Parse Tree"):
+        st.subheader("Token Information")
+        st.dataframe(df_tokens)
+        st.markdown(f"**Root (highest ranked) word:** {root_word}")
 
-    # Plot dependency tree
-    font_path = os.path.join("utility", "NotoSansDevanagari.ttf")
-    fig = plot_dependency_tree(df_tokens, font_path)
-    st.pyplot(fig)
+        font_path = os.path.join("utility", "NotoSansDevanagari.ttf")
+        fig = plot_dependency_tree(df_tokens, font_path)
+        st.pyplot(fig)
 
     # Process for ISL translation
     cleaned_word_tags = get_cleaned_word_tags(document)

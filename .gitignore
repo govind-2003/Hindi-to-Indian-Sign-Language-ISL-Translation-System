@@ -1,0 +1,8 @@
+# Ignore all mp4 files
+*.mp4
+
+# Ignore the ISL_videos folder and all its contents
+ISL_videos/
+
+# Ignore _pycache_ folder and all its contents
+__pycache__/
