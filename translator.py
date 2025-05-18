@@ -347,7 +347,7 @@ sign_mapping_vowels = {
 }
 
 # Set your actual path here
-folder_path = r"ISL Videos"
+folder_path = r"C:\Users\user\Documents\My Major Project\ISL Videos"
 
 
 def search_videos(final_isl_list):
