@@ -19,6 +19,14 @@ from IPython.display import Video, display
 from deep_translator import GoogleTranslator
 from nltk.stem import WordNetLemmatizer
 from moviepy.editor import VideoFileClip, concatenate_videoclips
+from pathlib import Path
+
+inflections = ast.literal_eval(Path("./utility/output.txt").read_text(encoding="utf-8"))
+# build Hindi_form → base_key map
+hindi_to_base = {h: base for base, forms in inflections.items() for h in forms}
+# helper to normalize any token
+def normalize_token(tok):
+    return hindi_to_base.get(tok, tok)
 
 
 nlp_pipeline = stanza.Pipeline('hi', processors='tokenize,lemma,pos,depparse')
@@ -251,9 +259,14 @@ def get_special_video_dict():
 
 
 def get_synonym_substituted_list(sign_words_list, isl_dict, translator, lemmatizer, iwn, special_videos):
+    
     synonym_substituted_list = []
 
     for word, pos_tag in sign_words_list:
+
+        # ─── normalize any inflected form to its English base key ───
+        word = normalize_token(word)
+        # ─────────────────────────────────────────────────────────────
         # Step 1: Translate Hindi to English
         english_word = translator.translate(word, src='hi', dest='en').lower()
         english_word_lemmatized = lemmatizer.lemmatize(english_word)
@@ -371,12 +384,6 @@ def play_videos(video_paths):
         subprocess.Popen([vlc_path, '--fullscreen', video_path])
         time.sleep(5)  # Delay before next video
 
-# video_paths = search_videos(final_isl_list)
-# print("Videos Found:")
-# for video in video_paths:
-#     print(video)
-
-
 
 def merge_videos_opencv(video_paths, output_path):
     # Open the first video to get properties like width, height, and FPS
@@ -421,10 +428,5 @@ def merge_videos_moviepy(video_paths, output_path):
     final_clip.write_videofile(output_path, codec='libx264', audio_codec='aac')
 
 
-# merge_videos_opencv(video_paths, "merged_isl.mp4")
 
-# import os
-
-# Make sure the path is correct and the video exists there
-# os.startfile("merged_isl.mp4")  # Works on Windows
 
