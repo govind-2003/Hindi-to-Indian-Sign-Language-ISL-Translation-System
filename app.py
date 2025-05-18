@@ -1,5 +1,6 @@
 import streamlit as st
 import speech_recognition as sr
+import pandas as pd
 import os
 from translator import analyze_hindi_sentence
 from translator import extract_token_info
@@ -126,6 +127,8 @@ if hindi_sentence.strip():
     stopword_removed_list = remove_stopwords(word_sign_order)
     sign_words_list = extract_sign_words(stopword_removed_list)
 
+    
+
     # Dictionary and translation
     cleaned_dict = load_isl_dictionary()
     lemmatizer, iwn = get_lemmatizer_and_iwn()
@@ -135,6 +138,12 @@ if hindi_sentence.strip():
     synonym_substituted_list = get_synonym_substituted_list(
         sign_words_list, cleaned_dict, translator, lemmatizer, iwn, special_videos
     )
+
+    df_synonyms = pd.DataFrame(synonym_substituted_list, columns=["Hindi Word", "POS Tag", "ISL Dictionary Tag"])
+    # synonym_substituted_list.columns = ["Hindi Word", "POS Tag", "ISL Dictionary Tag"]
+    
+    with st.expander("✅ Show Final ISL Order After Synonym Substitution and Stop Word Removal"):
+        st.dataframe(df_synonyms)
     
     isl_hindi_english_dict = get_isl_hindi_english_dict(cleaned_dict)
     video_paths = search_videos(synonym_substituted_list)
