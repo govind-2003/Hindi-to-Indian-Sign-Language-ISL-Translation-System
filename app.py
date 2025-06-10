@@ -6,7 +6,6 @@ from translator import analyze_hindi_sentence
 from translator import extract_token_info
 from translator import plot_dependency_tree
 from translator import get_cleaned_word_tags
-from translator import change_dict_order
 from translator import reorder_word_signs
 from translator import reorder_neg_wq_words
 from translator import remove_stopwords
@@ -15,11 +14,10 @@ from translator import load_isl_dictionary
 from translator import get_lemmatizer_and_iwn
 from translator import get_special_video_dict
 from translator import get_synonym_substituted_list
-from translator import init_google_translator
 from translator import get_isl_hindi_english_dict
 from translator import search_videos
-from translator import merge_videos_opencv
 from translator import merge_videos_moviepy
+from googletrans import Translator
 
 st.markdown(
     """
@@ -61,11 +59,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# st.set_page_config(page_title="Hindi to ISL System", layout="centered")
-
 st.title("Hindi to Indian Sign Language (ISL) Translation System")
-
-# hindi_sentence = st.text_input("Enter the Hindi sentence:")
 
 def recognize_speech():
     r = sr.Recognizer()
@@ -87,7 +81,7 @@ st.markdown("### 🗣️ Enter the Hindi sentence (Type or Speak):")
 if 'spoken_text' not in st.session_state:
     st.session_state.spoken_text = ""
 
-# Input from text box (defaults to spoken text if available)
+# Input from text box
 hindi_sentence = st.text_input("📝 Type here or use voice:", value=st.session_state.spoken_text)
 
 # Speech button
@@ -95,18 +89,13 @@ if st.button("🎤 Speak"):
     spoken = recognize_speech()
     st.session_state.spoken_text = spoken
     st.rerun()
- # Rerun to update text input with spoken text
 
-# Use hindi_sentence in your logic below this line
 st.markdown(f"🗣️ **Hindi Sentence Provided:** {hindi_sentence}")
 
-
-# Step 2: Proceed only if input is provided
 if hindi_sentence.strip():
-    # Analyze sentence
     document = analyze_hindi_sentence(hindi_sentence)
     df_tokens, root_word = extract_token_info(document)
-
+    
     # Collapsible section for text analysis and dependency parse
     with st.expander("📊 Show Text Content & Dependency Parse Tree"):
         st.subheader("Token Information")
@@ -119,34 +108,29 @@ if hindi_sentence.strip():
 
     # Process for ISL translation
     cleaned_word_tags = get_cleaned_word_tags(document)
-    
     word_sign_order = cleaned_word_tags.copy()
     word_sign_order = reorder_word_signs(cleaned_word_tags, word_sign_order)
     word_sign_order = reorder_neg_wq_words(word_sign_order)
-    
     stopword_removed_list = remove_stopwords(word_sign_order)
     sign_words_list = extract_sign_words(stopword_removed_list)
 
-    
-
     # Dictionary and translation
-    cleaned_dict = load_isl_dictionary()
+    cleaned_dict, cleaned_dict_reverse = load_isl_dictionary()
     lemmatizer, iwn = get_lemmatizer_and_iwn()
     special_videos = get_special_video_dict()
-    translator = init_google_translator()
+    translator = Translator()
 
     synonym_substituted_list = get_synonym_substituted_list(
-        sign_words_list, cleaned_dict, translator, lemmatizer, iwn, special_videos
+        sign_words_list, cleaned_dict, translator, lemmatizer, iwn, special_videos, cleaned_dict_reverse
     )
 
     df_synonyms = pd.DataFrame(synonym_substituted_list, columns=["Hindi Word", "POS Tag", "ISL Dictionary Tag"])
-    # synonym_substituted_list.columns = ["Hindi Word", "POS Tag", "ISL Dictionary Tag"]
     
     with st.expander("✅ Show Final ISL Order After Synonym Substitution and Stop Word Removal"):
         st.dataframe(df_synonyms)
     
     isl_hindi_english_dict = get_isl_hindi_english_dict(cleaned_dict)
-    video_paths = search_videos(synonym_substituted_list)
+    video_paths = search_videos(synonym_substituted_list, translator)
 
     # Merge and play video
     merge_videos_moviepy(video_paths, "merged_isl.mp4")

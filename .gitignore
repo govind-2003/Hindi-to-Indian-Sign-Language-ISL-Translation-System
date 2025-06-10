@@ -6,3 +6,5 @@
 
 # Ignore all __pycache__ folders anywhere
 **/__pycache__/
+
+*.png

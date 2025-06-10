@@ -1,25 +1,20 @@
 import stanza
-import nlp
 import os
-import subprocess
-import time
-import cv2
 import pandas as pd
 import ast
 import re
 import pyiwn
 import nltk
-import functools
+import spacy
 import networkx as nx
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 from nltk.corpus import wordnet as wn
 from networkx.drawing.nx_pydot import graphviz_layout
-from IPython.display import Video, display
-from deep_translator import GoogleTranslator
-from nltk.stem import WordNetLemmatizer
 from moviepy.editor import VideoFileClip, concatenate_videoclips
 from pathlib import Path
+from PIL import Image, ImageDraw, ImageFont
+from moviepy.editor import ImageClip
 
 inflections = ast.literal_eval(Path("./utility/output.txt").read_text(encoding="utf-8"))
 # build Hindi_form → base_key map
@@ -76,10 +71,10 @@ def plot_dependency_tree(df_tokens, hindi_font_path):
 
     for idx, row in df_tokens.iterrows():
         node_labels[idx] = row["Text word"]
+        dependency_graph.add_node(idx)
         if row["Parent index"] != 0:  # Skip root node
             dependency_graph.add_edge(row["Parent index"], idx)
-
-    # graph_layout = nx.spring_layout(dependency_graph, seed=42)
+    
     graph_layout = graphviz_layout(dependency_graph, prog="dot")
 
     plt.figure(figsize=(8, 5))
@@ -94,7 +89,7 @@ def plot_dependency_tree(df_tokens, hindi_font_path):
 
     # Instead of plt.show(), return the current figure to be rendered in Streamlit
     fig = plt.gcf()
-    plt.close(fig)  # Close to avoid double display elsewhere
+    plt.close(fig)  
     return fig
 
 
@@ -208,8 +203,6 @@ def extract_sign_words(stopword_removed_list):
     return sign_words_list
 
 
-
-
 def load_isl_dictionary(file_path='./utility/isl_dict.txt'):
     with open(file_path, 'r', encoding='utf8') as file:
         raw_dict = ast.literal_eval(file.read())
@@ -223,10 +216,13 @@ def load_isl_dictionary(file_path='./utility/isl_dict.txt'):
     # Lowercase all keys (if any missed)
     cleaned_dict = {key.lower(): value for key, value in cleaned_dict.items()}
 
-    # Manually add missing or required entries
+    cleaned_dict_reverse = {value : key for key, value in cleaned_dict.items()}
+
+    #Manually add missing or required entries
     cleaned_dict['school'] = 'स्कूल'
 
-    return cleaned_dict
+    return cleaned_dict, cleaned_dict_reverse
+
 
 def get_isl_hindi_english_dict(cleaned_dict):
     """
@@ -236,40 +232,43 @@ def get_isl_hindi_english_dict(cleaned_dict):
     return {hindi_word: english_word for english_word, hindi_word in cleaned_dict.items()}
 
 
-
-def init_google_translator():
-    return GoogleTranslator(source='auto', target='en')
-
-
-
 def get_lemmatizer_and_iwn():
     nltk.download('wordnet')
     nltk.download('omw-1.4')
-    lemmatizer = WordNetLemmatizer()
+    # lemmatizer = WordNetLemmatizer()
+    lemmatizer = spacy.load("en_core_web_sm")
     iwn = pyiwn.IndoWordNet()
     return lemmatizer, iwn
+
 
 def get_special_video_dict():
     return {
         'i': 'I',
-        'who': '/content/drive/MyDrive/Major Project - Final Year/ISL Dictionary/W/Who_Whom.mp4',
-        'whom': '/content/drive/MyDrive/Major Project - Final Year/ISL Dictionary/W/Who_Whom.mp4'
+        'who': 'Who_Whom',
+        'whom': 'Who_Whom',
+        'do': 'Do',
+        'go' : 'Go'
     }
 
 
 
-def get_synonym_substituted_list(sign_words_list, isl_dict, translator, lemmatizer, iwn, special_videos):
+def get_synonym_substituted_list(sign_words_list, isl_dict, translator, lemmatizer, iwn, special_videos, cleaned_dict_reverse):
     
     synonym_substituted_list = []
 
     for word, pos_tag in sign_words_list:
 
         # ─── normalize any inflected form to its English base key ───
-        word = normalize_token(word)
-        # ─────────────────────────────────────────────────────────────
+        print("Original Word -> ", word)
+        temp = normalize_token(word)
+        if temp[0] >= 'A' and temp[0] <= 'Z' or temp[0] >= 'a' and temp[0] <= 'z':
+            synonym_substituted_list.append((word, pos_tag, temp))
+            continue
         # Step 1: Translate Hindi to English
-        english_word = translator.translate(word, src='hi', dest='en').lower()
-        english_word_lemmatized = lemmatizer.lemmatize(english_word)
+        english_word = translator.translate(temp, src='hi', dest='en').text.lower()
+        print("temp -> ", temp)
+        print("English Word -> ", english_word)     
+        english_word_lemmatized = lemmatizer(english_word)[0].lemma_.lower()
 
         # Special video dictionary match
         if english_word_lemmatized in special_videos:
@@ -281,14 +280,16 @@ def get_synonym_substituted_list(sign_words_list, isl_dict, translator, lemmatiz
             synonym_substituted_list.append((word, pos_tag, english_word))
             continue
 
-        # Case 1: Direct match in ISL values
-        if word in isl_dict.values():
-            synonym_substituted_list.append((word, pos_tag, english_word))
+        space_word = ' ' + word
+
+        if space_word in cleaned_dict_reverse:
+            print("Found in cleaned_dict_reverse")
+            synonym_substituted_list.append((word, pos_tag, cleaned_dict_reverse[space_word]))
             continue
 
         # Case 2: Match Hindi synonyms
         try:
-            all_hindi_synsets = iwn.synsets(word)
+            all_hindi_synsets = iwn.synsets(temp)
         except Exception:
             all_hindi_synsets = []
 
@@ -321,101 +322,110 @@ def get_synonym_substituted_list(sign_words_list, isl_dict, translator, lemmatiz
 
     return synonym_substituted_list
 
-# Reversed dictionary mapping Hindi words to English words
-
-#print(isl_hindi_english_dict)
-sign_mapping_vowels = {
-    'ा': 'आ',  # Aa
-    'ि': 'इ',  # I
-    'ी': 'ई',  # II
-    'ु': 'उ',  # U
-    'ू': 'ऊ',  # UU
-    'ृ': 'ऋ',  # R
-    'े': 'ए',  # E
-    'ै': 'ऐ',  # AI
-    'ो': 'ओ',  # O
-    'ौ': 'औ',  # AU
-    'ं': 'अं', # Anusvara
-    'ः': 'अः'  # Visarga
-}
+folder_path = "C:/Users/user/Documents/My Major Project/ISL Videos"
 
 
-# Example sign mapping dictionary
-sign_mapping_vowels = {
-    'a': 'A', 'e': 'E', 'i': 'I', 'o': 'O', 'u': 'U',
-    # Add more if needed
-}
+def create_fingerspell_intro(isl_word, output_path="fingerspell_intro.mp4"):
+    # Step 1: Create image with text
+    temp = isl_word[0].upper() + isl_word[1:].lower()
+    text = f"Finger Spelling for {temp}\n\n(Since individual alphabet representations in\nIndian Sign Language (ISL) are not available\nin the dictionary, a short word beginning\nwith each letter has been selected, and\ncorresponding videos have been generated.) "
+    img_width, img_height = 1280, 720
+    background_color = "black"
+    text_color = "white"
 
-# Set your actual path here
-folder_path = r"C:\Users\user\Documents\My Major Project\ISL Videos"
+    output_dir="."
+
+    safe_word = isl_word.replace(" ", "_").lower()
+    base_name = f"fingerspell_{safe_word}"
+
+    image_path = os.path.join(output_dir, f"{base_name}.png")
+    output_path = os.path.join(output_dir, f"{base_name}.mp4")
+
+    # Create a black background image
+    img = Image.new("RGB", (img_width, img_height), background_color)
+    draw = ImageDraw.Draw(img)
+
+    try:
+        font = ImageFont.truetype("arial.ttf", 60)
+    except:
+        font = ImageFont.load_default()
+
+    # Use textbbox instead of deprecated textsize
+    bbox = draw.multiline_textbbox((0, 0), text, font=font, align="center")
+    text_width = bbox[2] - bbox[0]
+    text_height = bbox[3] - bbox[1]
+    x = (img_width  - text_width) // 2
+    y = (img_height - text_height) // 2
+    draw.multiline_text((x, y), text, fill=text_color, font=font, align="center")
+
+    # Save image
+    img.save(image_path)
+
+    # Step 2: Convert the image to a 5-second video
+    clip = ImageClip(image_path).set_duration(5)
+    clip.write_videofile(output_path, fps=24, codec='libx264', audio=False)
+
+    return output_path
 
 
-def search_videos(final_isl_list):
+def search_videos(final_isl_list, translator):
     found_videos = []
+
     for or_word, pos_tag, isl_word in final_isl_list:
-        if pos_tag == 'pnoun':  # Alphabets and FingerSpell
+        print(or_word, pos_tag, isl_word)  
+
+        # Case: Finger spelling
+        if isl_word == '#':
+            english_word = translator.translate(or_word, src='hi', dest='en').text.lower()
+            intro_path = create_fingerspell_intro(english_word)
+            found_videos.append(intro_path)
+            for letter in english_word:
+                print(letter)
+                mnSize = 1000
+                foundVideo = None
+                for root, dirs, files in os.walk(folder_path):
+                    for file in files:
+                        if file[0].lower() == letter.lower() and len(file) < mnSize:
+                            mnSize = len(file)
+                            foundVideo = os.path.join(root, file)
+                if foundVideo:
+                    found_videos.append(foundVideo)
+            continue
+
+        # Case: Proper Noun - finger spell each letter of isl_word
+        if pos_tag == 'pnoun':
+            
+            intro_path = create_fingerspell_intro(isl_word)
+            found_videos.append(intro_path)
+
             for letter in isl_word:
-                video_name = f"{letter.capitalize()}.mp4"
+                mnSize = 1000
+                foundVideo = ""
                 for root, dirs, files in os.walk(folder_path):
-                    full_path = os.path.join(root, video_name)
-                    if os.path.isfile(full_path):
-                        found_videos.append(full_path)
-        elif isl_word == '#':
-            for char in or_word:
-                video_name = f"{sign_mapping_vowels[char]}.mp4" if char in sign_mapping_vowels else f"{char}.mp4"
-                for root, dirs, files in os.walk(folder_path):
-                    full_path = os.path.join(root, video_name)
-                    if os.path.isfile(full_path):
-                        found_videos.append(full_path)
-        elif isl_word.startswith('@'):  # Special Words
-            found_videos.append(isl_word[1:])
-        else:
-            video_name = f"{isl_word.capitalize()}.mp4"
-            for root, dirs, files in os.walk(folder_path):
-                full_path = os.path.join(root, video_name)
-                if os.path.isfile(full_path):
-                    found_videos.append(full_path)
+                    for file in files:
+                        if file[0].lower() == letter.lower() and len(file) < mnSize:
+                            mnSize = len(file)
+                            foundVideo = os.path.join(root, file)
+                found_videos.append(foundVideo)
+            continue
+
+        for root, dirs, files in os.walk(folder_path):
+            found = False
+            for file in files:
+                if file.split('.mp4')[0].lower() == isl_word.lower():
+                    found_videos.append(os.path.join(root, file))
+                    found = True
+                    break
+            if found:
+                break
 
     return found_videos
 
 
-def play_videos(video_paths):
-    vlc_path = r'C:\Program Files\VideoLAN\VLC\vlc.exe'  # VLC path
-    for video_path in video_paths:
-        subprocess.Popen([vlc_path, '--fullscreen', video_path])
-        time.sleep(5)  # Delay before next video
-
-
-def merge_videos_opencv(video_paths, output_path):
-    # Open the first video to get properties like width, height, and FPS
-    if os.path.exists(output_path):
-        os.remove(output_path)
-        
-    cap = cv2.VideoCapture(video_paths[0])
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for .mp4 file
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-    # Create a VideoWriter to save the merged video
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-
-    for video_path in video_paths:
-        cap = cv2.VideoCapture(video_path)
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-            out.write(frame)  # Write frame to output video
-
-        cap.release()
-
-    out.release()  # Finalize the output video
-
-
-
 def merge_videos_moviepy(video_paths, output_path):
     # Remove existing merged video if present
+    print("-----Video Paths-----")
+    print(video_paths)
     if os.path.exists(output_path):
         os.remove(output_path)
 
@@ -423,7 +433,10 @@ def merge_videos_moviepy(video_paths, output_path):
     clips = [VideoFileClip(path) for path in video_paths]
 
     # Concatenate all clips into one
-    final_clip = concatenate_videoclips(clips)
+    if not clips:
+        raise RuntimeError("No Video Cliops found to merge.")
+        
+    final_clip = concatenate_videoclips(clips, method="compose")
 
     # Write the result to output_path with a standard codec
     final_clip.write_videofile(output_path, codec='libx264', audio_codec='aac')
