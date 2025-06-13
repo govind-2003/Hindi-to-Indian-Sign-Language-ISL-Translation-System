@@ -16,6 +16,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 from moviepy.editor import ImageClip
 
+
 inflections = ast.literal_eval(Path("./utility/output.txt").read_text(encoding="utf-8"))
 # build Hindi_form → base_key map
 hindi_to_base = {h: base for base, forms in inflections.items() for h in forms}
@@ -162,6 +163,7 @@ def reorder_neg_wq_words(word_sign_order):
 
     return word_sign_order
 
+
 def remove_stopwords(word_sign_order, stopwords_path='./utility/final_stopwords.txt'):
     with open(stopwords_path, 'r', encoding='utf8') as file:
         stopword_list = [word.strip() for word in file.readlines()]
@@ -172,6 +174,7 @@ def remove_stopwords(word_sign_order, stopwords_path='./utility/final_stopwords.
     }
 
     return stopword_removed_list
+
 
 def get_xpos_to_pos_mapping():
     return {
@@ -191,6 +194,7 @@ def get_xpos_to_pos_mapping():
         'INTF': 'intensifier',
         # Add more mappings as needed
     }
+
 
 def extract_sign_words(stopword_removed_list):
     xpos_to_pos = get_xpos_to_pos_mapping()
@@ -249,7 +253,6 @@ def get_special_video_dict():
         'do': 'Do',
         'go' : 'Go'
     }
-
 
 
 def get_synonym_substituted_list(sign_words_list, isl_dict, translator, lemmatizer, iwn, special_videos, cleaned_dict_reverse):
@@ -321,6 +324,7 @@ def get_synonym_substituted_list(sign_words_list, isl_dict, translator, lemmatiz
                     synonym_substituted_list.append((word, pos_tag, '#'))
 
     return synonym_substituted_list
+
 
 folder_path = "C:/Users/user/Documents/My Major Project/ISL Videos"
 
